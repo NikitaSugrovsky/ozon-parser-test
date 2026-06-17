@@ -1,36 +1,44 @@
-﻿import requests
-from bs4 import BeautifulSoup
+﻿from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import json
 from datetime import datetime
 
 class OzonParser:
     def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        options = webdriver.ChromeOptions()
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--no-sandbox')
+        self.driver = webdriver.Chrome(options=options)
     
     def parse(self, query, sku):
         url = f"https://www.ozon.ru/search/?text={query}"
-        response = requests.get(url, headers=self.headers)
+        self.driver.get(url)
         
-        if response.status_code != 200:
-            return {"error": "Ошибка запроса", "status": response.status_code}
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        items = soup.find_all('a', href=True)
-        position = None
-        
-        for i, item in enumerate(items[:100], 1):
-            if f'/product/{sku}' in item.get('href', ''):
-                position = i
-                break
-        
-        return {
-            "query": query,
-            "sku": sku,
-            "position": position or "not_found",
-            "timestamp": datetime.now().isoformat()
-        }
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-widget="searchResultsV2"]'))
+            )
+            
+            items = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="/product/"]')
+            position = None
+            
+            for i, item in enumerate(items[:100], 1):
+                href = item.get_attribute('href')
+                if href and f'/product/{sku}' in href:
+                    position = i
+                    break
+            
+            return {
+                "query": query,
+                "sku": sku,
+                "position": position or "not_found",
+                "timestamp": datetime.now().isoformat()
+            }
+        finally:
+            self.driver.quit()
 
 if __name__ == "__main__":
     parser = OzonParser()
